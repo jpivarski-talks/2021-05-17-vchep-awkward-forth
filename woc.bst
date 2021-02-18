@@ -1820,6 +1820,7 @@ FUNCTION {article}
 { output.bibitem
   format.authors "author" output.check
   author format.key output
+  format.btitle "title" output.check
   crossref missing$
     {
      ""
