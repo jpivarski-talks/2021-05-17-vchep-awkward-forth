@@ -195,27 +195,31 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 \textcolor{OliveGreen}{\textbf{loop}}
 \end{Verbatim}
 
-\noindent To unpack repetition levels from Parquet, we would use the following program:
+\noindent Parquet is a columnar file format, so the floating-point content comes in a form that's ready to use in Awkward Array, without even copying the uncompressed buffer. However, the nested list structure is in a highly packed form: repetition levels indicating the depth of each floating-point item, which are further run-length encoded or bit-packed in small groups.
+
+We can unpack them using two AwkwardForth programs: the first produces the repetition levels as unsigned 8-byte integers, the second converts them into three levels of offsets.
 
 \begin{Verbatim}[commandchars=\\\{\}]
-input data
-output replevels uint8
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{replevels}} uint8
 
-data I-> stack
-begin
-  data varint-> stack
-  dup 1 and 0= if
-    ( run-length encoding )
-    data B-> replevels
-    1 rshift 1-
-    replevels dup
-  else
-    ( bit-packed )
-    1 rshift 8 *
-    data #2bit-> replevels
-  then
-  dup data pos 4 - <=
-until
+\textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{I->}} \textcolor{OliveGreen}{\textbf{stack}}                \textcolor{teal}{\textit{( get the number of bytes to read )}}
+\textcolor{OliveGreen}{\textbf{begin}}
+  \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{varint->}} \textcolor{OliveGreen}{\textbf{stack}}         \textcolor{teal}{\textit{( read a variable-length integer )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{and}}                   \textcolor{teal}{\textit{( its lowest bit selects encoding )}}
+
+  \textcolor{OliveGreen}{\textbf{0=}} \textcolor{OliveGreen}{\textbf{if}}                       \textcolor{teal}{\textit{( zero means run-length encoding... )}}
+    \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{B->}} \textcolor{blue}{replevels}        \textcolor{teal}{\textit{( write the value to duplicate )}}
+    \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{rshift}} \textcolor{OliveGreen}{\textbf{1-}}               \textcolor{teal}{\textit{( determine how many times )}}
+    \textcolor{blue}{replevels} \textcolor{OliveGreen}{\textbf{dup}}             \textcolor{teal}{\textit{( duplicate it )}}
+
+  \textcolor{OliveGreen}{\textbf{else}}                        \textcolor{teal}{\textit{( non-zero bit-packed... )}}
+    \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{rshift}} \textcolor{gray}{8} \textcolor{OliveGreen}{\textbf{*}}              \textcolor{teal}{\textit{( determine how many to read )}}
+    \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#2bit->}} \textcolor{blue}{replevels}    \textcolor{teal}{\textit{( read all the 2-bit integers )}}
+  \textcolor{OliveGreen}{\textbf{then}}
+
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{pos}} \textcolor{gray}{4} \textcolor{OliveGreen}{\textbf{-}}            \textcolor{teal}{\textit{( continue until end of input buffer )}}
+\textcolor{OliveGreen}{\textbf{until}}
 \end{Verbatim}
 
 \noindent This last program interprets the repetition levels as offsets:
@@ -232,32 +236,32 @@ begin
     1 count2 +!
   then
   dup 2 = if
+    1 count1 +!
     count2 @ offsets2 +<- stack
     1 count2 !
-    1 count1 +!
   then
   dup 1 = if
-    count2 @ offsets2 +<- stack
-    1 count2 !
+    1 count0 +!
     count1 @ offsets1 +<- stack
     1 count1 !
-    1 count0 +!
+    count2 @ offsets2 +<- stack
+    1 count2 !
   then
   0 = if
-    count2 @ offsets2 +<- stack
-    1 count2 !
-    count1 @ offsets1 +<- stack
-    1 count1 !
     count0 @ offsets0 +<- stack
     1 count0 !
+    count1 @ offsets1 +<- stack
+    1 count1 !
+    count2 @ offsets2 +<- stack
+    1 count2 !
   then
 
   replevels end
 until
 
-count2 @ offsets2 +<- stack
-count1 @ offsets1 +<- stack
 count0 @ offsets0 +<- stack
+count1 @ offsets1 +<- stack
+count2 @ offsets2 +<- stack
 \end{Verbatim}
 
 \section{Acknowledgements}
