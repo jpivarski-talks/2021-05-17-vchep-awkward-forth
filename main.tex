@@ -222,47 +222,49 @@ We can unpack them using two AwkwardForth programs: the first produces the repet
 \textcolor{OliveGreen}{\textbf{until}}
 \end{Verbatim}
 
-\noindent This last program interprets the repetition levels as offsets:
+\noindent This last program interprets the repetition levels as offsets. It uses variables to count the number of items at each level of list depth since all three need to be increased concurrently and using \mintinline{forth}{swap} or \mintinline{forth}{rot} to manage them on the stack would be unnecessarily complex. The Standard Forth words \mintinline{forth}{@}, \mintinline{forth}{!}, and \textcolor{OliveGreen}{\tt\textbf{+!}} read, write, and increment an off-stack variable. Variables have the same integer type as the stack and are initially zero.
 
 \begin{Verbatim}[commandchars=\\\{\}]
-input replevels
-output offsets0 int32 output offsets1 int32 output offsets2 int32
-variable count0 variable count1 variable count2
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{replevels}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets0}} int32 \textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets1}} int32 \textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets2}} int32
+\textcolor{OliveGreen}{\textbf{variable}} \textcolor{blue}{\textbf{count0}} \textcolor{OliveGreen}{\textbf{variable}} \textcolor{blue}{\textbf{count1}} \textcolor{OliveGreen}{\textbf{variable}} \textcolor{blue}{\textbf{count2}}
 
-begin
-  replevels b-> stack
+\textcolor{OliveGreen}{\textbf{begin}}
+  \textcolor{blue}{replevels} \textcolor{OliveGreen}{\textbf{b->}} \textcolor{OliveGreen}{\textbf{stack}}         \textcolor{teal}{\textit{( get one repetition level )}}
 
-  dup 3 = if
-    1 count2 +!
-  then
-  dup 2 = if
-    1 count1 +!
-    count2 @ offsets2 +<- stack
-    1 count2 !
-  then
-  dup 1 = if
-    1 count0 +!
-    count1 @ offsets1 +<- stack
-    1 count1 !
-    count2 @ offsets2 +<- stack
-    1 count2 !
-  then
-  0 = if
-    count0 @ offsets0 +<- stack
-    1 count0 !
-    count1 @ offsets1 +<- stack
-    1 count1 !
-    count2 @ offsets2 +<- stack
-    1 count2 !
-  then
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{3} \textcolor{OliveGreen}{\textbf{=}} \textcolor{OliveGreen}{\textbf{if}}                  \textcolor{teal}{\textit{( 3 means deepest level of structure )}}
+    \textcolor{gray}{1} \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{+!}}
+  \textcolor{OliveGreen}{\textbf{then}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{2} \textcolor{OliveGreen}{\textbf{=}} \textcolor{OliveGreen}{\textbf{if}}                  \textcolor{teal}{\textit{( 2 means a new innermost list )}}
+    \textcolor{gray}{1} \textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{+!}}
+    \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{!}}
+  \textcolor{OliveGreen}{\textbf{then}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{=}} \textcolor{OliveGreen}{\textbf{if}}                  \textcolor{teal}{\textit{( 1 means a new inner list )}}
+    \textcolor{gray}{1} \textcolor{blue}{count0} \textcolor{OliveGreen}{\textbf{+!}}
+    \textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{!}}
+    \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{!}}
+  \textcolor{OliveGreen}{\textbf{then}}
+  \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{=}} \textcolor{OliveGreen}{\textbf{if}}                      \textcolor{teal}{\textit{( 0 means a new outer list )}}
+    \textcolor{blue}{count0} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count0} \textcolor{OliveGreen}{\textbf{!}}
+    \textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{!}}
+    \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{1} \textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{!}}
+  \textcolor{OliveGreen}{\textbf{then}}
 
-  replevels end
-until
+  \textcolor{blue}{replevels} \textcolor{OliveGreen}{\textbf{end}}               \textcolor{teal}{\textit{( continue to the end of input )}}
+\textcolor{OliveGreen}{\textbf{until}}
 
-count0 @ offsets0 +<- stack
-count1 @ offsets1 +<- stack
-count2 @ offsets2 +<- stack
+\textcolor{blue}{count0} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}   \textcolor{teal}{\textit{( add the last counts for all three )}}
+\textcolor{blue}{count1} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+\textcolor{blue}{count2} \textcolor{OliveGreen}{\textbf{@}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
 \end{Verbatim}
+
+Programs such as these would not be written (and commented!) by hand, but generated by Uproot, other file-readers that produce Awkward Arrays, or \mintinline{c++}{TypedArrayBuilder}.
 
 \section{Acknowledgements}
 
