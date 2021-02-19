@@ -13,6 +13,7 @@
 \documentclass{webofc}
 \usepackage[varg]{txfonts}   % Web of Conferences font
 \usepackage{natbib}
+\usepackage[dvipsnames]{xcolor}
 
 %%% for the arXiv, be sure to include _minted-main/
 % \usepackage[draft]{minted}
@@ -68,13 +69,13 @@ Though motivated by the problem of ROOT deserialization, AwkwardForth is intende
 
 Awkward Array has a tool for converting arbitrary record-oriented data into Awkward Arrays: \mintinline{c++}{ArrayBuilder} constructs arrays in an append-only order, driven by commands such as \mintinline{c++}{begin_record}/\mintinline{c++}{end_record}, switch to \mintinline{c++}{field}, \mintinline{c++}{integer}, and \mintinline{c++}{begin_list}/\mintinline{c++}{end_list}. A consequence of this generality is that \mintinline{c++}{ArrayBuilder} discovers the array's data type at runtime, adding output buffers as the observed type gets more complex. While this is great for JSON, type discovery is unnecessarily slow for formats whose type is known in advance, though perhaps not at compile-time. (Uproot currently uses \mintinline{c++}{ArrayBuilder} in Python.) In this paper, we discuss the design of a \mintinline{c++}{TypedArrayBuilder}, which generates AwkwardForth programs from data types, but is still driven by \mintinline{c++}{ArrayBuilder}-like commands.
 
-\section{Virtual machine implementation}
+\section{AwkwardForth virtual machine}
 
 AwkwardForth is implemented in C++ as a virtual machine with byte-compiled instructions. It is not interactive, unlike most Forths, since it is intended to be programmed algorithmically. Even the \mintinline{c++}{TypedArrayBuilder} use-case would operate by ``wiring'' its fixed suite of commands to algorithmically generated words. Some \mintinline{c++}{TypedArrayBuilder} commands must change the state of its finite-state machine: for instance, when filling an array of doubly nested lists of integers, the second \mintinline{c++}{begin_list} puts it into a state that requires the next command to be \mintinline{c++}{integer} or \mintinline{c++}{end_list}; the first does not. And yet, each of these commands must return control-flow to that which calls them. To implement \mintinline{c++}{TypedArrayBuilder} with an AwkwardForth machine, the AwkwardForth machine must be able to stop and resume with its state intact (unlike most Forths).
 
 An AwkwardForth machine has three control-flow states: ``not ready,'' ``paused,'' and ``done.'' In addition, its stack of integers and position markers in input and output buffers are also part of its state. There are 6 ways to control its execution:
 \begin{itemize}
-\item \mintinline{c++}{run(inputs)}: resets the machine from any state and runs the main code from the beginning. If it encounters a \mintinline{forth}{pause} word, it becomes ``paused,'' otherwise, the machine's state changes to ``done'' if successful or ``not ready'' if a runtime error is encountered.
+\item \mintinline{c++}{run(inputs)}: resets the machine from any state and runs the main code from the beginning. If it encounters a \textcolor{OliveGreen}{\tt\textbf{pause}} word, it becomes ``paused,'' otherwise, the machine's state changes to ``done'' if successful or ``not ready'' if a runtime error is encountered.
 \item \mintinline{c++}{begin(inputs)}: resets the machine from any state to ``paused'' before the first word.
 \item \mintinline{c++}{resume()}: starts from ``paused'' and continues until reaching the end of the main code (``done''), or the end of a user-defined word, if started by a \mintinline{c++}{call(word)} (described below).
 \item \mintinline{c++}{call(word)}: starting from ``paused'' or ``done,'' executes a user-defined word/subroutine.
@@ -88,7 +89,43 @@ All errors are caught in the compilation phase except for 10 possible runtime er
 
 All runtime execution is implemented within a single ``\mintinline{c++}{noexcept}'' C++ function.
 
+An arbitrary number of named input buffers and named output buffers are associated with each AwkwardForth program. Inputs must be supplied at the beginning of a run and outputs are created at this time. Input buffers, which are the data to be parsed, are viewed as untyped raw bytes, interpreted by the words of the program itself. Output buffers, which are columns to use in a new Awkward Array, have specific numerical types and can only be filled with that type. Inputs have a fixed size and are seekable; outputs grow in an append-only way.
 
+\section{AwkwardForth language}
+
+Like all Forth languages, AwkwardForth has an extremely simple syntax: whitespace delimits tokens and tokens are interpreted in reverse Polish order: ``\mintinline{forth}{3 4 +}'' means the sum of \mintinline{forth}{3} and \mintinline{forth}{4} (the first two words put numbers on the stack and the third pops them and pushes their sum).
+
+AwkwardForth has 57 standard built-in words and 61 extensions for input and output buffers, though 50 of the 61 are different ways of interpreting the bytes of an input buffer. Two special words control the state of the virtual machine: \textcolor{OliveGreen}{\tt\textbf{pause}} and \textcolor{OliveGreen}{\tt\textbf{halt}}, and three do not generate runtime code at all: they declare variables, inputs, and outputs.
+
+\begin{Verbatim}[commandchars=\\\{\}]
+\textcolor{OliveGreen}{\textbf{variable}} \textcolor{blue}{\textbf{variable_name}} \textcolor{teal}{            \textit{( Standard Forth )}}
+\textcolor{OliveGreen}{\textbf{input   }} \textcolor{blue}{\textbf{input_name}}\textcolor{teal}{                \textit{( AwkwardForth extension )}}
+\textcolor{OliveGreen}{\textbf{output  }} \textcolor{blue}{\textbf{output_name}} output_type\textcolor{teal}{   \textit{( AwkwardForth extension )}}
+\end{Verbatim}
+
+As in Standard Forth, user-defined words are bracketed between \mintinline{forth}{:} and \mintinline{forth}{;} and the main code is anything outside these definitions. Control structures are pairs of words like \mintinline{forth}{if}-\mintinline{forth}{then} and \mintinline{forth}{do}-\mintinline{forth}{loop}, or triples like \mintinline{forth}{if}-\mintinline{forth}{else}-\mintinline{forth}{then} and \mintinline{forth}{begin}-\mintinline{forth}{while}-\mintinline{forth}{repeat}.
+
+\begin{minted}{forth}
+: fibonacci    ( pops n -- pushes nth-fibonacci-number )
+  dup
+  1 > if
+    1- dup 1- fibonacci
+    swap fibonacci
+    +
+  then
+;
+
+( Pushes [0 1 1 2 3 5 8 13 21 34 55 89 144 233 377] onto the stack. )
+15 0 do
+  i fibonacci
+loop
+\end{minted}
+
+The 50 special words for parsing are all arrows with a type code, an optional \textcolor{OliveGreen}{\tt\textbf{!}} for big-endian and an optional \textcolor{OliveGreen}{\tt\textbf{\#}} to pull a number off the stack to determine how many times to repeat it. Thus, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{blue}{output\_name}}'' reads 4 bytes from the input as an integer and writes it to the output, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{!d->}} \textcolor{blue}{output\_name}}'' reads 8 bytes as a big-endian, double-precision float, and ``{\tt \textcolor{gray}{100} \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{\#I->}} \textcolor{blue}{output\_name}}'' reads 100 unsigned 4-byte integers. In any case, the destination may be the stack: ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}}''.
+
+Outputs are similar, but less varied because they have preassigned types. They may be filled directly from an input (bypassing the stack for efficiency and to preserve the types of floating point numbers) or filled from the stack: ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{stack}}''.
+
+The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and signed zig-zag encoded integers, which are used in many file formats, including Avro and Parquet.
 
 
 
