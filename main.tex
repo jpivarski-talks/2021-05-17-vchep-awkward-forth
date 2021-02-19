@@ -123,7 +123,7 @@ loop
 
 The 50 special words for parsing are all arrows with a type code, an optional \textcolor{OliveGreen}{\tt\textbf{!}} for big-endian and an optional \textcolor{OliveGreen}{\tt\textbf{\#}} to pull a number off the stack to determine how many times to repeat it. Thus, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{blue}{output\_name}}'' reads 4 bytes from the input as an integer and writes it to the output, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{!d->}} \textcolor{blue}{output\_name}}'' reads 8 bytes as a big-endian, double-precision float, and ``{\tt \textcolor{gray}{100} \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{\#I->}} \textcolor{blue}{output\_name}}'' reads 100 unsigned 4-byte integers. In any case, the destination may be the stack: ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}}''.
 
-The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and signed zig-zag encoded integers, which are used in many file formats, including Avro and Parquet.
+The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and signed zig-zag encoded integers, which are used in many file formats, including Avro and Parquet. Also, Parquet needs a routine to read $n$-bit unsigned integers, hence \textcolor{OliveGreen}{\tt\textbf{2bit->}}, \textcolor{OliveGreen}{\tt\textbf{3bit->}}, etc.\ for any $n$.
 
 Outputs are similar, but less varied because they have preassigned types. They may be filled directly from an input (bypassing the stack for efficiency and to preserve the types of floating point numbers) or filled from the stack: ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{stack}}''. A shortcut for appending the last output plus a value from the stack is ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{stack}}''.
 
@@ -161,6 +161,103 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
     \textcolor{OliveGreen}{\textbf{loop}}
   \textcolor{OliveGreen}{\textbf{loop}}
 \textcolor{OliveGreen}{\textbf{again}}                         \textcolor{teal}{\textit{( ends with a "seek beyond" exception )}}
+\end{Verbatim}
+
+\noindent To read data with the same structure from Avro, we can use this program:
+
+\begin{Verbatim}[commandchars=\\\{\}]
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{stream}}                  \textcolor{teal}{\textit{(  )}}
+
+output offset0 int32
+output offset1 int32
+output offset2 int32
+output content float32
+
+0 offset0 <- stack
+0 offset1 <- stack
+0 offset2 <- stack
+
+0 do
+  stream zigzag-> stack
+  dup offset0 +<- stack
+  0 do
+    stream zigzag-> stack
+    dup offset1 +<- stack
+    0 do
+      stream zigzag-> stack
+      dup offset2 +<- stack
+      stream #f-> content
+      stream b-> stack drop
+    loop
+    stream b-> stack drop
+  loop
+  stream b-> stack drop
+loop
+\end{Verbatim}
+
+\noindent To unpack repetition levels from Parquet, we would use the following program:
+
+\begin{Verbatim}[commandchars=\\\{\}]
+input stream
+output replevels uint8
+
+stream I-> stack
+begin
+  stream varint-> stack
+  dup 1 and 0= if
+    ( run-length encoding )
+    stream B-> replevels
+    1 rshift 1-
+    replevels dup
+  else
+    ( bit-packed )
+    1 rshift 8 *
+    stream #2bit-> replevels
+  then
+  dup stream pos 4 - <=
+until
+\end{Verbatim}
+
+\noindent This last program interprets the repetition levels as offsets:
+
+\begin{Verbatim}[commandchars=\\\{\}]
+input reps
+output offsets0 int32 output offsets1 int32 output offsets2 int32
+variable count0 variable count1 variable count2
+
+begin
+  reps b-> stack
+
+  dup 3 = if
+    1 count2 +!
+  then
+  dup 2 = if
+    count2 @ offsets2 +<- stack
+    1 count2 !
+    1 count1 +!
+  then
+  dup 1 = if
+    count2 @ offsets2 +<- stack
+    1 count2 !
+    count1 @ offsets1 +<- stack
+    1 count1 !
+    1 count0 +!
+  then
+  0 = if
+    count2 @ offsets2 +<- stack
+    1 count2 !
+    count1 @ offsets1 +<- stack
+    1 count1 !
+    count0 @ offsets0 +<- stack
+    1 count0 !
+  then
+
+  reps end
+until
+
+count2 @ offsets2 +<- stack
+count1 @ offsets1 +<- stack
+count0 @ offsets0 +<- stack
 \end{Verbatim}
 
 \section{Acknowledgements}
