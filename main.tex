@@ -130,6 +130,7 @@ Outputs are similar, but less varied because they have preassigned types. They m
 More built-in words can be added to handle problems posed by input formats. Since each built-in word has a fixed 5~ns cost, specialized words result in faster AwkwardForth code.
 
 \section{AwkwardForth programs for ROOT, Avro, and Parquet}
+\label{sec:programs}
 
 To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>>>} from ROOT, we can use the following AwkwardForth program:
 
@@ -179,13 +180,13 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 
 \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                          \textcolor{teal}{\textit{( upper limit on the stack at startup )}}
   \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
-  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}       \textcolor{teal}{\textit{( add it to the offsets )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}       \textcolor{teal}{\textit{( add it to the offsets )}}
   \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                        \textcolor{teal}{\textit{( and use it as the loop counter )}}
     \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
-    \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
     \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}
       \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
-      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
       \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#f->}} \textcolor{blue}{content}       \textcolor{teal}{\textit{( finally, the floating point values )}}
       \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{b->}} \textcolor{OliveGreen}{\textbf{stack}} \textcolor{OliveGreen}{\textbf{drop}}     \textcolor{teal}{\textit{( ends with a zero-byte )}}
     \textcolor{OliveGreen}{\textbf{loop}}
@@ -268,7 +269,7 @@ Programs such as these would not be written (and commented!) by hand, but genera
 
 \section{Performance}
 
-Figure~\ref{fig:performance} 
+Figure~\ref{fig:performance} presents single-threaded deserialization rates of uncompressed ROOT, Avro, and Parquet files from a warmed filesystem cache on an Intel i7-8750H (2.2~GHz). There are four test files for each format: 4-byte \mintinline{c++}{float}, variable-length lists of \mintinline{c++}{float}, doubly nested lists of lists of \mintinline{c++}{float}, and triply nested lists of lists of lists of \mintinline{c++}{float}. For ROOT files, variable-length lists are \mintinline{c++}{std::vector}, but in Avro they are called ``arrays'' (despite being variable-length), and in Parquet, they are called ``repeated groups.'' All four types of files contain exactly 1\,073\,741\,824 \mintinline{c++}{float} values and are all approximately 4~GiB (large, but well within the 15.5~GiB of physical RAM). The lengths of the lists at each level of depth are Poisson-distributed with a mean of 8 items per list. ROOT's TBasket size, Avro's data block size, and Parquet's row-group and page sizes were all fixed at 64~MiB.
 
 \begin{figure}[p]
 \includegraphics[width=\linewidth]{AwkwardForth-performance-ROOT.pdf}
@@ -280,12 +281,29 @@ Figure~\ref{fig:performance}
 \caption{Deserialization rate for converting uncompressed ROOT, Avro, and Parquet files to Awkward Arrays from warm cache. C++ ROOT, fastavro, and pyarrow are the leading libraries for each file type. \label{fig:performance}}
 \end{figure}
 
+The ROOT files were read in three ways:
+\begin{enumerate}
+\item Using C++ ROOT, loading data with \mintinline{c++}{TBranch::GetEntry}) and copying it into \mintinline{c++}{offsets0}, \mintinline{c++}{offsets1}, \mintinline{c++}{offsets2}, and \mintinline{c++}{content} buffers for Awkward Array.
+\item Using Uproot 4.0.1's Python code.
+\item Using AwkwardForth (with Uproot to find the TBaskets within the file).
+\end{enumerate}
+
+\noindent As an additional comparison, the same data were converted into ROOT's future RNTuple format, which is truly columnar. As expected (reproducing our previous results~\cite{chep2019}), \mintinline{c++}{float} data are fastest to read, being essentially a memory-copy from TBaskets or RNTuple pages into the \mintinline{c++}{content} buffer. (ROOT's \mintinline{c++}{TBranch::GetEntry} is not as fast as direct memory access, which could be enabled by switching to ROOT's BulkIO feature, but we did not attempt that in this study.) RNTuple maintains this speed for all levels of nestedness for the same reason, while Uproot's NumPy tricks slow down reading of \mintinline{c++}{std::vector<float>} and Uproot's pure Python is orders of magnitude slower for any deeper nesting. However, AwkwardForth keeps pace with ROOT's \mintinline{c++}{TBranch::GetEntry} at all levels of nestedness.
+
+We next compared AwkwardForth with fastavro, the leading Python package for reading Avro files. fastavro is a Python extension library, using the C Avro implementation for speed. However, fastavro is compiled without knowledge of the schemas of the Avro files, which limits this advantage. AwkwardForth, on the other hand, has specialized Forth code for each data type and it's fast enough to read Avro 10--80$\times$ faster than fastavro.
+
+Finally, we compared AwkwardForth with pyarrow, a Python extension library for the C++ Arrow and Parquet projects. In this case, pyarrow outperforms AwkwardForth by factors of 1.5--8$\times$. The AwkwardForth programs for Parquet in Section~\ref{sec:programs} indicate why: there's nothing about them that specializes to the data type except for the \textcolor{OliveGreen}{\tt\textbf{\#2bit->}} repetition level reader (deeper levels of nesting require logarithmically more bits) and the number of \textcolor{blue}{\tt count} variables and \textcolor{blue}{\tt offset} buffers. Here, AwkwardForth has no advantage over precompiled C++.
+
+We also studied the scaling of AwkwardForth with threads. The AwkwardForth virtual machine is stateful, but lightweight: many can be launched at once. Figure~\ref{fig:scaling} shows deserialization rate of the ROOT files on an AWS {\tt c5.18xlarge} instance, which has 72~cores. Linear scaling falls off at about 20~threads, or 4--5~GiB per second, which may be a limitation of memory bus supplying data from RAM. Python, by comparison, does not scale at all because of Python's Global Interpreter Lock (GIL)~\cite{python-gil}.
+
 \begin{figure}[t]
 \includegraphics[width=0.5\linewidth]{AwkwardForth-scaling.pdf}
 \includegraphics[width=0.5\linewidth]{Python-scaling.pdf}
 
 \caption{Scaling of deserialization by the number of threads. AwkwardForth (when called from Python) releases the Python GIL, which otherwise prevents any gains from parallel processing. \label{fig:scaling}}
 \end{figure}
+
+All scripts used to produce Figures~\ref{fig:performance} and \ref{fig:scaling} are available on GitHub~\cite{this-study}.
 
 \section{Conclusions}
 
