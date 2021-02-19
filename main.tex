@@ -58,10 +58,35 @@ This paper describes a different solution to the constraints listed above, which
 
 \section{AwkwardForth}
 
-AwkwardForth is a member of the Forth~\cite{forth} family of languages, which includes Postscript, another internal DSL. AwkwardForth adheres to a subset of the ANSI Forth Standard~\cite{forth-standard} and has extensions for interpreting input buffers and filling columns for Awkward Array.
+AwkwardForth is a member of the Forth family of languages, which includes Postscript, another internal DSL. AwkwardForth adheres to a subset of the ANSI Forth Standard~\cite{forth-standard} and has extensions for interpreting arbitrary input buffers and filling columns for Awkward Array.
 
 Like all Forths, AwkwardForth is primarily concerned with stack manipulation. The runtime environment features a stack of integers and programs define ``words'' that manipulate the stack (as well as input and output buffers, in the case of AwkwardForth). Each word consumes and produces an arbitrary number of arguments and return values through this stack, and hence Forth words are more general than functions in a typical programming language. Whereas functional programming languages eliminate or minimize side-effects, Forth acts exclusively through side-effects. As such, it is more like an extensible assembly language.
 
+The popularity of Forth peaked in the early 1980's because its interactive interpreter could fit within the tight resource constraints of early personal computers~\cite{forth}. This same interactive minimalism makes it an ideal candidate for running fast programs that must be generated at runtime, such as deserializing ROOT files. On typical hardware, AwkwardForth takes about 5~ns to evaluate each word, compared to about 900~ns for Python to evaluate a bytecode.
+
+Though motivated by the problem of ROOT deserialization, AwkwardForth is intended for the general problem of deserializing non-columnar data formats into columnar Awkward Arrays. Many file formats, such as ProtoBuf, Thrift, Avro, FlatBuffers, JSON, and BSON, describe data structures in a record-oriented layout, with all fields of one record contiguous with each other, while columnar formats like Parquet, Arrow, and Awkward Array place all values of one field contiguous with each other before moving on to the next field. Conversions between columnar formats can be very fast, sometimes casting, rather than copying, the columns. Record-oriented formats, on the other hand, must be fully parsed. In this paper, we examine AwkwardForth's deserialization performance for ROOT, Avro, and Parquet.
+
+Awkward Array has a tool for converting arbitrary record-oriented data into Awkward Arrays: \mintinline{c++}{ArrayBuilder} constructs arrays in an append-only order, driven by commands such as \mintinline{c++}{begin_record}/\mintinline{c++}{end_record}, switch to \mintinline{c++}{field}, \mintinline{c++}{integer}, and \mintinline{c++}{begin_list}/\mintinline{c++}{end_list}. A consequence of this generality is that \mintinline{c++}{ArrayBuilder} discovers the array's data type at runtime, adding output buffers as the observed type gets more complex. While this is great for JSON, type discovery is unnecessarily slow for formats whose type is known in advance, though perhaps not at compile-time. (Uproot currently uses \mintinline{c++}{ArrayBuilder} in Python.) In this paper, we discuss the design of a \mintinline{c++}{TypedArrayBuilder}, which generates AwkwardForth programs from data types, but is still driven by \mintinline{c++}{ArrayBuilder}-like commands.
+
+\section{Virtual machine implementation}
+
+AwkwardForth is implemented in C++ as a virtual machine with byte-compiled instructions. It is not interactive, unlike most Forths, since it is intended to be programmed algorithmically. Even the \mintinline{c++}{TypedArrayBuilder} use-case would operate by ``wiring'' its fixed suite of commands to algorithmically generated words. Some \mintinline{c++}{TypedArrayBuilder} commands must change the state of its finite-state machine: for instance, when filling an array of doubly nested lists of integers, the second \mintinline{c++}{begin_list} puts it into a state that requires the next command to be \mintinline{c++}{integer} or \mintinline{c++}{end_list}; the first does not. And yet, each of these commands must return control-flow to that which calls them. To implement \mintinline{c++}{TypedArrayBuilder} with an AwkwardForth machine, the AwkwardForth machine must be able to stop and resume with its state intact (unlike most Forths).
+
+An AwkwardForth machine has three control-flow states: ``not ready,'' ``paused,'' and ``done.'' In addition, its stack of integers and position markers in input and output buffers are also part of its state. There are 6 ways to control its execution:
+\begin{itemize}
+\item \mintinline{c++}{run(inputs)}: resets the machine from any state and runs the main code from the beginning. If it encounters a \mintinline{forth}{pause} word, it becomes ``paused,'' otherwise, the machine's state changes to ``done'' if successful or ``not ready'' if a runtime error is encountered.
+\item \mintinline{c++}{begin(inputs)}: resets the machine from any state to ``paused'' before the first word.
+\item \mintinline{c++}{resume()}: starts from ``paused'' and continues until reaching the end of the main code (``done''), or the end of a user-defined word, if started by a \mintinline{c++}{call(word)} (described below).
+\item \mintinline{c++}{call(word)}: starting from ``paused'' or ``done,'' executes a user-defined word/subroutine.
+\item \mintinline{c++}{step()}: starting from ``paused,'' executes one built-in word, stepping into user-defined words if necessary, resulting in ``paused'' or ``done'' (for debugging only).
+\item \mintinline{c++}{reset()}: from any state, clears the stack, all variables, detaches the input buffers and deletes the output buffers, resulting in ``not ready.''
+\end{itemize}
+
+When an AwkwardForth machine is first constructed, it compiles its source code (text) into bytecode instructions (32-bit integers), so that so that they can be interpreted more quickly. (This is the same sense in which Python is ``compiled.'') Built-in words translate to 1--3 compiled instructions, the second and third being arguments that modify the first. User-defined words are separate sequences of instructions, called a ``dictionary'' in Forth. Control-flow structures, such as \mintinline{forth}{if} and \mintinline{forth}{loop}, are implemented as unnamed user-defined words so that their bodies are fixed-width ``calls'' into the dictionary, simplifying the logic of instruction pointer manipulation.
+
+All errors are caught in the compilation phase except for 10 possible runtime errors: ``user halt,'' ``recursion depth exceeded,'' ``stack underflow,'' ``stack overflow,'' ``division by zero,'' ``read beyond,'' ``seek beyond,'' ``skip beyond,'' ``rewind beyond,'' and ``varint too big.'' The last 5 of these are specific to parsing input buffers.
+
+All runtime execution is implemented within a single ``\mintinline{c++}{noexcept}'' C++ function.
 
 
 
