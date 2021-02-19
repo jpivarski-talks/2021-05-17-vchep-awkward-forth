@@ -137,96 +137,96 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 \textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}                    \textcolor{teal}{\textit{( ROOT TBaskets have a data buffer )}}
 \textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{byte_offsets}}            \textcolor{teal}{\textit{( and a buffer of byte offsets )}}
 
-\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets2}} int32         \textcolor{teal}{\textit{( output Awkward Array offsets )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets0}} int32         \textcolor{teal}{\textit{( output Awkward Array offsets )}}
 \textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets1}} int32         \textcolor{teal}{\textit{( ... )}}
-\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets0}} int32         \textcolor{teal}{\textit{( ... )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets2}} int32         \textcolor{teal}{\textit{( ... )}}
 \textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{content}} float32        \textcolor{teal}{\textit{( and content )}}
 
-\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( offsets start at zero )}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( offsets start at zero )}}
 \textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
-\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
 
 \textcolor{OliveGreen}{\textbf{begin}}
   \textcolor{blue}{byte_offsets} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( get a position from the byte offsets )}}
   \textcolor{gray}{6} \textcolor{OliveGreen}{\textbf{+}} \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{seek}}               \textcolor{teal}{\textit{( seek to it plus a 6-byte header )}}
   \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}             \textcolor{teal}{\textit{( get the std::vector size )}}
-  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( add it to the offsets )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( add it to the offsets )}}
   \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                        \textcolor{teal}{\textit{( and use it as the loop counter )}}
     \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( same for the inner std::vector )}}
     \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
     \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}
       \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}         \textcolor{teal}{\textit{( and the innermost std::vector )}}
-      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
       \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#!f->}} \textcolor{blue}{content}      \textcolor{teal}{\textit{( finally, the floating point values )}}
     \textcolor{OliveGreen}{\textbf{loop}}
   \textcolor{OliveGreen}{\textbf{loop}}
 \textcolor{OliveGreen}{\textbf{again}}                         \textcolor{teal}{\textit{( ends with a "seek beyond" exception )}}
 \end{Verbatim}
 
-\noindent To read data with the same structure from Avro, we can use this program:
+\noindent To read data with the same structure from Avro, we can use the program below. It is applied to each data block of an Avro container file, with the AwkwardForth machine stack initialized with the number of entries in the block.
 
 \begin{Verbatim}[commandchars=\\\{\}]
-\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{stream}}                  \textcolor{teal}{\textit{(  )}}
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}                  \textcolor{teal}{\textit{( an Avro data block is a single buffer )}}
 
-output offset0 int32
-output offset1 int32
-output offset2 int32
-output content float32
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets0}} int32         \textcolor{teal}{\textit{( output Awkward Array offsets )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets1}} int32         \textcolor{teal}{\textit{( ... )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets2}} int32         \textcolor{teal}{\textit{( ... )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{content}} float32        \textcolor{teal}{\textit{( and content )}}
 
-0 offset0 <- stack
-0 offset1 <- stack
-0 offset2 <- stack
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( offsets start at zero )}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
 
-0 do
-  stream zigzag-> stack
-  dup offset0 +<- stack
-  0 do
-    stream zigzag-> stack
-    dup offset1 +<- stack
-    0 do
-      stream zigzag-> stack
-      dup offset2 +<- stack
-      stream #f-> content
-      stream b-> stack drop
-    loop
-    stream b-> stack drop
-  loop
-  stream b-> stack drop
-loop
+\textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                          \textcolor{teal}{\textit{( upper limit on the stack at startup )}}
+  \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}       \textcolor{teal}{\textit{( add it to the offsets )}}
+  \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                        \textcolor{teal}{\textit{( and use it as the loop counter )}}
+    \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}
+      \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
+      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offset2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+      \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#f->}} \textcolor{blue}{content}       \textcolor{teal}{\textit{( finally, the floating point values )}}
+      \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{b->}} \textcolor{OliveGreen}{\textbf{stack}} \textcolor{OliveGreen}{\textbf{drop}}     \textcolor{teal}{\textit{( ends with a zero-byte )}}
+    \textcolor{OliveGreen}{\textbf{loop}}
+    \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{b->}} \textcolor{OliveGreen}{\textbf{stack}} \textcolor{OliveGreen}{\textbf{drop}}       \textcolor{teal}{\textit{( lists also end with a zero-byte )}}
+  \textcolor{OliveGreen}{\textbf{loop}}
+  \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{b->}} \textcolor{OliveGreen}{\textbf{stack}} \textcolor{OliveGreen}{\textbf{drop}}         \textcolor{teal}{\textit{( lists also end with a zero-byte )}}
+\textcolor{OliveGreen}{\textbf{loop}}
 \end{Verbatim}
 
 \noindent To unpack repetition levels from Parquet, we would use the following program:
 
 \begin{Verbatim}[commandchars=\\\{\}]
-input stream
+input data
 output replevels uint8
 
-stream I-> stack
+data I-> stack
 begin
-  stream varint-> stack
+  data varint-> stack
   dup 1 and 0= if
     ( run-length encoding )
-    stream B-> replevels
+    data B-> replevels
     1 rshift 1-
     replevels dup
   else
     ( bit-packed )
     1 rshift 8 *
-    stream #2bit-> replevels
+    data #2bit-> replevels
   then
-  dup stream pos 4 - <=
+  dup data pos 4 - <=
 until
 \end{Verbatim}
 
 \noindent This last program interprets the repetition levels as offsets:
 
 \begin{Verbatim}[commandchars=\\\{\}]
-input reps
+input replevels
 output offsets0 int32 output offsets1 int32 output offsets2 int32
 variable count0 variable count1 variable count2
 
 begin
-  reps b-> stack
+  replevels b-> stack
 
   dup 3 = if
     1 count2 +!
@@ -252,7 +252,7 @@ begin
     1 count0 !
   then
 
-  reps end
+  replevels end
 until
 
 count2 @ offsets2 +<- stack
