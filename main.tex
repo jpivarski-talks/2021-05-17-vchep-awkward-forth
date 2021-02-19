@@ -123,12 +123,45 @@ loop
 
 The 50 special words for parsing are all arrows with a type code, an optional \textcolor{OliveGreen}{\tt\textbf{!}} for big-endian and an optional \textcolor{OliveGreen}{\tt\textbf{\#}} to pull a number off the stack to determine how many times to repeat it. Thus, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{blue}{output\_name}}'' reads 4 bytes from the input as an integer and writes it to the output, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{!d->}} \textcolor{blue}{output\_name}}'' reads 8 bytes as a big-endian, double-precision float, and ``{\tt \textcolor{gray}{100} \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{\#I->}} \textcolor{blue}{output\_name}}'' reads 100 unsigned 4-byte integers. In any case, the destination may be the stack: ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}}''.
 
-Outputs are similar, but less varied because they have preassigned types. They may be filled directly from an input (bypassing the stack for efficiency and to preserve the types of floating point numbers) or filled from the stack: ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{stack}}''.
-
 The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and signed zig-zag encoded integers, which are used in many file formats, including Avro and Parquet.
 
+Outputs are similar, but less varied because they have preassigned types. They may be filled directly from an input (bypassing the stack for efficiency and to preserve the types of floating point numbers) or filled from the stack: ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{stack}}''. A shortcut for appending the last output plus a value from the stack is ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{stack}}''.
 
+More built-in words can be added to handle problems posed by input formats. Since each built-in word has a fixed 5~ns cost, specialized words result in faster AwkwardForth code.
 
+\section{AwkwardForth programs for ROOT, Avro, and Parquet}
+
+To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>>>} from ROOT, we can use the following AwkwardForth program:
+
+\begin{Verbatim}[commandchars=\\\{\}]
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}                    \textcolor{teal}{\textit{( ROOT TBaskets have a data buffer )}}
+\textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{byte_offsets}}            \textcolor{teal}{\textit{( and a buffer of byte offsets )}}
+
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets2}} int32         \textcolor{teal}{\textit{( output Awkward Array offsets )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets1}} int32         \textcolor{teal}{\textit{( ... )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{offsets0}} int32         \textcolor{teal}{\textit{( ... )}}
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{content}} float32        \textcolor{teal}{\textit{( and content )}}
+
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( offsets start at zero )}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
+\textcolor{gray}{\textbf{0}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{\textbf{stack}}
+
+\textcolor{OliveGreen}{\textbf{begin}}
+  \textcolor{blue}{byte_offsets} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( get a position from the byte offsets )}}
+  \textcolor{gray}{6} \textcolor{OliveGreen}{\textbf{+}} \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{seek}}               \textcolor{teal}{\textit{( seek to it plus a 6-byte header )}}
+  \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}             \textcolor{teal}{\textit{( get the std::vector size )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets2} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( add it to the offsets )}}
+  \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                        \textcolor{teal}{\textit{( and use it as the loop counter )}}
+    \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}           \textcolor{teal}{\textit{( same for the inner std::vector )}}
+    \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+    \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}
+      \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{!i->}} \textcolor{OliveGreen}{\textbf{stack}}         \textcolor{teal}{\textit{( and the innermost std::vector )}}
+      \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
+      \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#!f->}} \textcolor{blue}{content}      \textcolor{teal}{\textit{( finally, the floating point values )}}
+    \textcolor{OliveGreen}{\textbf{loop}}
+  \textcolor{OliveGreen}{\textbf{loop}}
+\textcolor{OliveGreen}{\textbf{again}}                         \textcolor{teal}{\textit{( ends with a "seek beyond" exception )}}
+\end{Verbatim}
 
 \section{Acknowledgements}
 
