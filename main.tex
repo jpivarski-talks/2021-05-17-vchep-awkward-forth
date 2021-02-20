@@ -33,7 +33,7 @@
 \institute{Princeton University, Princeton, New Jersey, United States. \and Institute of Engineering and Management, Kolkata, West Bengal, India.}
 
 \abstract{
-  Insert your english abstract here.
+File formats for generic data structures, such as ROOT, Avro, and Parquet, pose a problem for deserialization code: it must be fast, but its form depends on the type of the data structure, not known at compile-time. Just-in-time compilation is one solution, but we propose a more portable solution: specialized virtual machines. AwkwardForth is a Forth-driven virtual machine for deserializing data into Awkward Arrays. As a language, it is not intended for humans to write, but it loosens the coupling between Uproot and Awkward Array. AwkwardForth is about as fast as C++ ROOT, is 10--80$\times$ faster than fastavro, but 1.5--8$\times$ slower than pyarrow for columnar Parquet-reading.
 }
 
 \maketitle
