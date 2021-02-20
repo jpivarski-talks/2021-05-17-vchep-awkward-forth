@@ -67,11 +67,11 @@ The popularity of Forth peaked in the early 1980's because its interactive inter
 
 Though motivated by the problem of ROOT deserialization, AwkwardForth is intended for the general problem of deserializing non-columnar data formats into columnar Awkward Arrays. Many file formats, such as ProtoBuf, Thrift, Avro, FlatBuffers, and JSON, describe data structures in a record-oriented layout, with all fields of one record contiguous with each other, while columnar formats like Parquet, Arrow, RNTuple, and Awkward Array place all values of one field contiguous with each other before moving on to the next field. Conversions between columnar formats can be very fast, sometimes casting, rather than copying, the columns. Record-oriented formats, on the other hand, must be fully parsed. In this paper, we examine AwkwardForth's deserialization performance for ROOT TTrees, Avro, and Parquet.
 
-Awkward Array has a tool for converting arbitrary record-oriented data into Awkward Arrays: \mintinline{c++}{ArrayBuilder} constructs arrays in an append-only order, driven by commands such as \mintinline{c++}{begin_record}/\mintinline{c++}{end_record}, switch to \mintinline{c++}{field}, \mintinline{c++}{integer}, and \mintinline{c++}{begin_list}/\mintinline{c++}{end_list}. A consequence of this generality is that \mintinline{c++}{ArrayBuilder} discovers the array's data type at runtime, adding output buffers as the observed type gets more complex. While this is great for JSON, type discovery is unnecessarily slow for formats whose type is known in advance, though perhaps not at compile-time. (Uproot currently uses \mintinline{c++}{ArrayBuilder} in Python.) In this paper, we discuss the design of a \mintinline{c++}{TypedArrayBuilder}, which generates AwkwardForth programs from data types, but is still driven by \mintinline{c++}{ArrayBuilder}-like commands.
+Awkward Array has a tool for converting arbitrary record-oriented data into Awkward Arrays: \mintinline{c++}{ArrayBuilder} constructs arrays in an append-only order, driven by commands such as \mintinline{c++}{begin_record}/\mintinline{c++}{end_record}, switch to \mintinline{c++}{field}, \mintinline{c++}{integer}, and \mintinline{c++}{begin_list}/\mintinline{c++}{end_list}. A consequence of this generality is that \mintinline{c++}{ArrayBuilder} discovers the array's data type at runtime, adding output buffers as the observed type gets more complex. While this is great for JSON, type discovery is unnecessarily slow for formats whose type is known in advance, though perhaps not at compile-time. (Uproot currently uses \mintinline{c++}{ArrayBuilder} in Python.) In this paper, we also consider the design of a \mintinline{c++}{TypedArrayBuilder}, which generates AwkwardForth programs from data types, but is still driven by \mintinline{c++}{ArrayBuilder}-like commands.
 
 \section{AwkwardForth virtual machine}
 
-AwkwardForth is implemented in C++ as a virtual machine with byte-compiled instructions. It is not interactive, unlike most Forths, since it is intended to be programmed algorithmically. Even the \mintinline{c++}{TypedArrayBuilder} use-case would operate by ``wiring'' its fixed suite of commands to algorithmically generated words. Some \mintinline{c++}{TypedArrayBuilder} commands must change the state of its finite-state machine: for instance, when filling an array of doubly nested lists of integers, the second \mintinline{c++}{begin_list} puts it into a state that requires the next command to be \mintinline{c++}{integer} or \mintinline{c++}{end_list}; the first does not. And yet, each of these commands must return control-flow to its caller and remember its state for the next call. To implement \mintinline{c++}{TypedArrayBuilder} with an AwkwardForth machine, the AwkwardForth machine must be able to stop and resume with its state intact (unlike most Forths).
+AwkwardForth is implemented in C++ as a virtual machine with byte-compiled instructions. It is not interactive, unlike most Forths, since it is intended to be programmed algorithmically. Even the \mintinline{c++}{TypedArrayBuilder} use-case would operate by ``wiring'' its fixed suite of commands to algorithmically generated words. Some \mintinline{c++}{TypedArrayBuilder} commands must change the state of its finite-state machine: for instance, when filling an array of doubly nested lists of integers, the first \mintinline{c++}{begin_list} puts it into a state that expects another \mintinline{c++}{begin_list} or \mintinline{c++}{end_list}; the second puts it into a state that expects \mintinline{c++}{integer} or \mintinline{c++}{end_list}. And yet, each of these commands must return control-flow to its caller and remember its state for the next call. To implement \mintinline{c++}{TypedArrayBuilder} with an AwkwardForth machine, the AwkwardForth machine must be able to stop and resume with its state intact (unlike most Forths).
 
 An AwkwardForth machine has three control-flow states: ``not ready,'' ``paused,'' and ``done.'' Its stack of integers and position markers in input and output buffers are also part of its state, remembering its list depth, for instance. There are 6 ways to control its execution:
 \begin{itemize}
@@ -83,13 +83,13 @@ An AwkwardForth machine has three control-flow states: ``not ready,'' ``paused,'
 \item \mintinline{c++}{reset()}: from any state, clears the stack, all variables, detaches the input buffers and deletes the output buffers, returning the machine to ``not ready.''
 \end{itemize}
 
-When an AwkwardForth machine is first constructed, it compiles its source code (text) into bytecode instructions (sequences of 32-bit integers---a jagged array), so that so that they can be interpreted more quickly. This is the same sense in which Python code is ``compiled.'' Built-in words translate to 1--3 integer codes, the second and third being arguments that modify the first. User-defined words are separate sequences of instructions, called a ``dictionary'' in Forth. Control-flow structures, such as \mintinline{forth}{if} and \mintinline{forth}{loop}, are implemented as unnamed user-defined words so that their bodies are fixed-width ``calls'' into the dictionary, simplifying the logic of instruction pointer manipulation.
+When an AwkwardForth machine is first constructed, it compiles its source code (text) into bytecode instructions (variable-length sequences of 32-bit integers---a jagged array), so that so that they can be interpreted more quickly. This is the same sense in which Python code is ``compiled.'' Built-in words translate to 1--3 integer codes, the second and third being arguments that modify the first. User-defined words are separate sequences of instructions, called a ``dictionary'' in Forth. Control-flow structures, such as \mintinline{forth}{if} and \mintinline{forth}{loop}, are implemented as unnamed user-defined words so that their bodies are fixed-width ``calls'' into the dictionary, simplifying the logic of instruction pointer manipulation.
 
 All errors are caught in the compilation phase except for 10 possible runtime errors: ``user halt,'' ``recursion depth exceeded,'' ``stack underflow,'' ``stack overflow,'' ``division by zero,'' ``read beyond,'' ``seek beyond,'' ``skip beyond,'' ``rewind beyond,'' and ``varint too big.'' The last 5 of these are specific to parsing input buffers.
 
 All runtime execution is implemented in a single ``\mintinline{c++}{noexcept}'' C++ function for speed.
 
-An arbitrary number of named input buffers and named output buffers are associated with each AwkwardForth program. Inputs must be supplied at the beginning of a run and outputs are created at this time. Input buffers, which are the data to be parsed, are viewed as untyped raw bytes, interpreted by the words of the program itself. Output buffers, which are columns to use in a new Awkward Array, have specific numerical types and can only be filled with that type. Inputs have a fixed size and are seekable; outputs grow in an append-only way.
+An arbitrary number of named input buffers and named output buffers are associated with each AwkwardForth program. Inputs must be supplied at the beginning of a run; outputs are also created at this time. Input buffers, which are the data to be parsed, are viewed as untyped raw bytes, interpreted by the words of the program itself. Output buffers, which are columns to use in a new Awkward Array, have specific numerical types and can only be filled with that type. Inputs have a fixed size and are seekable; outputs grow in an append-only way.
 
 \section{AwkwardForth language}
 
@@ -123,7 +123,7 @@ loop
 
 The 50 special words for parsing are all arrows with a type code, an optional \textcolor{OliveGreen}{\tt\textbf{!}} for big-endian and an optional \textcolor{OliveGreen}{\tt\textbf{\#}} to pull a number off the stack to determine how many times to repeat it. Thus, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{blue}{output\_name}}'' reads 4 bytes from the input as an integer and writes it to the output, ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{!d->}} \textcolor{blue}{output\_name}}'' reads 8 bytes as a big-endian, double-precision float, and ``{\tt \textcolor{gray}{100} \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{\#I->}} \textcolor{blue}{output\_name}}'' reads 100 unsigned 4-byte integers. In any case, the destination may be the stack: ``{\tt \textcolor{blue}{input\_name} \textcolor{OliveGreen}{\textbf{i->}} \textcolor{OliveGreen}{\textbf{stack}}}''.
 
-The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and signed zig-zag encoded integers, which are used in many file formats, including Avro and Parquet. Also, Parquet needs a routine to read $n$-bit unsigned integers, hence \textcolor{OliveGreen}{\tt\textbf{2bit->}}, \textcolor{OliveGreen}{\tt\textbf{3bit->}}, etc.\ for any $n$.
+The type codes are taken from Python's \mintinline{python}{struct} module, which AwkwardForth most closely resembles in purpose (but vastly exceeds in expressiveness). Two special codes, \textcolor{OliveGreen}{\tt\textbf{varint->}} and \textcolor{OliveGreen}{\tt\textbf{zigzag->}}, read variable-length unsigned integers and zig-zag encoded signed integers, which are used in many file formats, including Avro and Parquet. Also, Parquet needs a command to read $n$-bit unsigned integers, hence \textcolor{OliveGreen}{\tt\textbf{2bit->}}, \textcolor{OliveGreen}{\tt\textbf{3bit->}}, etc.\ for any $n$.
 
 Outputs are similar, but less varied because they have preassigned types. They may be filled directly from an input (bypassing the stack for efficiency and to preserve the types of floating point numbers) or filled from the stack: ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{<-}} \textcolor{OliveGreen}{stack}}''. A shortcut for appending the last output plus a value from the stack is ``{\tt \textcolor{blue}{output\_name} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{stack}}''.
 
@@ -132,7 +132,7 @@ More built-in words can be added to handle problems posed by input formats. Sinc
 \section{AwkwardForth programs for ROOT, Avro, and Parquet}
 \label{sec:programs}
 
-To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>>>} from ROOT, we can use the following AwkwardForth program:
+To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>>>} from ROOT, we use the following AwkwardForth program:
 
 \begin{Verbatim}[commandchars=\\\{\}]
 \textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}                    \textcolor{teal}{\textit{( ROOT TBaskets have a data buffer )}}
@@ -164,7 +164,7 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 \textcolor{OliveGreen}{\textbf{again}}                         \textcolor{teal}{\textit{( ends with a "seek beyond" exception )}}
 \end{Verbatim}
 
-\noindent To read data with the same structure from Avro, we can use the program below. It is applied to each data block of an Avro container file, with the AwkwardForth machine stack initialized with the number of entries in the block.
+\noindent To read data with the same structure from Avro, we use the program below. It is applied to each data block of an Avro container file, with the AwkwardForth machine stack initialized with the number of entries in the block.
 
 \begin{Verbatim}[commandchars=\\\{\}]
 \textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}                    \textcolor{teal}{\textit{( an Avro data block is a single buffer )}}
@@ -180,7 +180,7 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 
 \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                          \textcolor{teal}{\textit{( upper limit on the stack at startup )}}
   \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
-  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}       \textcolor{teal}{\textit{( add it to the offsets )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets0} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}      \textcolor{teal}{\textit{( add it to the offsets )}}
   \textcolor{gray}{0} \textcolor{OliveGreen}{\textbf{do}}                        \textcolor{teal}{\textit{( and use it as the loop counter )}}
     \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{zigzag->}} \textcolor{OliveGreen}{\textbf{stack}}
     \textcolor{OliveGreen}{\textbf{dup}} \textcolor{blue}{offsets1} \textcolor{OliveGreen}{\textbf{+<-}} \textcolor{OliveGreen}{\textbf{stack}}
@@ -198,23 +198,23 @@ To read a TBasket of \mintinline{c++}{std::vector<std::vector<std::vector<float>
 
 \noindent Parquet is a columnar file format, so the floating-point content comes in a form that's ready to use in Awkward Array, without even copying the uncompressed buffer. However, the nested list structure is in a highly packed form: repetition levels indicating the depth of each floating-point item, which are further run-length encoded or bit-packed in small groups.
 
-We can unpack them using two AwkwardForth programs: the first produces the repetition levels as unsigned 8-byte integers, the second converts them into three levels of offsets.
+We unpack them using two AwkwardForth programs: the first produces the repetition levels as unsigned 1-byte integers and the second converts them into three levels of offsets.
 
 \begin{Verbatim}[commandchars=\\\{\}]
 \textcolor{OliveGreen}{\textbf{input}} \textcolor{blue}{\textbf{data}}
-\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{replevels}} uint8
+\textcolor{OliveGreen}{\textbf{output}} \textcolor{blue}{\textbf{replevels}} uint8        \textcolor{teal}{\textit{( output 1-byte integers )}}
 
 \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{I->}} \textcolor{OliveGreen}{\textbf{stack}}                \textcolor{teal}{\textit{( get the number of bytes to read )}}
 \textcolor{OliveGreen}{\textbf{begin}}
   \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{varint->}} \textcolor{OliveGreen}{\textbf{stack}}         \textcolor{teal}{\textit{( read a variable-length integer )}}
-  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{and}}                   \textcolor{teal}{\textit{( its lowest bit selects encoding )}}
+  \textcolor{OliveGreen}{\textbf{dup}} \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{and}}                   \textcolor{teal}{\textit{( its lowest bit selects encoding type )}}
 
   \textcolor{OliveGreen}{\textbf{0=}} \textcolor{OliveGreen}{\textbf{if}}                       \textcolor{teal}{\textit{( zero means run-length encoding... )}}
     \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{B->}} \textcolor{blue}{replevels}        \textcolor{teal}{\textit{( write the value to duplicate )}}
     \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{rshift}} \textcolor{OliveGreen}{\textbf{1-}}               \textcolor{teal}{\textit{( determine how many times )}}
     \textcolor{blue}{replevels} \textcolor{OliveGreen}{\textbf{dup}}             \textcolor{teal}{\textit{( duplicate it )}}
 
-  \textcolor{OliveGreen}{\textbf{else}}                        \textcolor{teal}{\textit{( non-zero bit-packed... )}}
+  \textcolor{OliveGreen}{\textbf{else}}                        \textcolor{teal}{\textit{( non-zero means bit-packed... )}}
     \textcolor{gray}{1} \textcolor{OliveGreen}{\textbf{rshift}} \textcolor{gray}{8} \textcolor{OliveGreen}{\textbf{*}}              \textcolor{teal}{\textit{( determine how many to read )}}
     \textcolor{blue}{data} \textcolor{OliveGreen}{\textbf{#2bit->}} \textcolor{blue}{replevels}    \textcolor{teal}{\textit{( read all the 2-bit integers )}}
   \textcolor{OliveGreen}{\textbf{then}}
@@ -270,7 +270,7 @@ Programs such as these would not be written (and commented!) by hand, but genera
 \section{Performance}
 \label{sec:performance}
 
-Figure~\ref{fig:performance} presents single-threaded deserialization rates of uncompressed ROOT, Avro, and Parquet files from a warmed filesystem cache on an Intel i7-8750H (2.2~GHz). There are four test files for each format: 4-byte \mintinline{c++}{float}, variable-length lists of \mintinline{c++}{float}, doubly nested lists of lists of \mintinline{c++}{float}, and triply nested lists of lists of lists of \mintinline{c++}{float}. For ROOT files, variable-length lists are \mintinline{c++}{std::vector}, but in Avro they are called ``arrays'' (despite being variable-length), and in Parquet, they are called ``repeated groups.'' All four types of files contain exactly 1\,073\,741\,824 \mintinline{c++}{float} values and are all approximately 4~GiB (large, but well within the 15.5~GiB of physical RAM). The lengths of the lists at each level of depth are Poisson-distributed with a mean of 8 items per list. ROOT's TBasket size, Avro's data block size, and Parquet's row-group and page sizes were all fixed at 64~MiB.
+Figure~\ref{fig:performance} presents single-threaded deserialization rates of uncompressed ROOT, Avro, and Parquet files from a warmed filesystem cache on an Intel i7-8750H (2.2~GHz) processor. There are four test files for each format: 4-byte \mintinline{c++}{float}, variable-length lists of \mintinline{c++}{float}, doubly nested lists of lists of \mintinline{c++}{float}, and triply nested lists of lists of lists of \mintinline{c++}{float}. For ROOT files, variable-length lists are \mintinline{c++}{std::vector}, but in Avro they are called ``arrays'' (despite being variable-length), and in Parquet, they are called ``repeated groups.'' All four types of files contain exactly 1\,073\,741\,824 \mintinline{c++}{float} values and are all approximately 4~GiB (large, but well within the 15.5~GiB of physical RAM). The lengths of the lists at each level of depth are Poisson-distributed with a mean of 8.0 items per list. ROOT's TBasket size, Avro's data block size, and Parquet's row-group and page sizes were all fixed at 64~MiB.
 
 \begin{figure}[p]
 \includegraphics[width=\linewidth]{AwkwardForth-performance-ROOT.pdf}
@@ -293,9 +293,9 @@ The ROOT files were read in three ways:
 
 We next compared AwkwardForth with fastavro, the leading Python package for reading Avro files. fastavro is a Python extension library, using the C Avro implementation for speed. However, fastavro is compiled without knowledge of the schemas of the Avro files, which limits this advantage. AwkwardForth, on the other hand, has specialized Forth code for each data type and it's fast enough to read Avro 10--80$\times$ faster than fastavro.
 
-Finally, we compared AwkwardForth with pyarrow, a Python extension library for the C++ Arrow and Parquet projects. In this case, pyarrow outperforms AwkwardForth by factors of 1.5--8$\times$. The AwkwardForth programs for Parquet in Section~\ref{sec:programs} indicate why: there's nothing about them that specializes to the data type except for the \textcolor{OliveGreen}{\tt\textbf{\#2bit->}} repetition level reader (deeper levels of nesting require logarithmically more bits) and the number of \textcolor{blue}{\tt count} variables and \textcolor{blue}{\tt offset} buffers. Here, AwkwardForth has no advantage over precompiled C++.
+Finally, we compared AwkwardForth with pyarrow, a Python extension library for the C++ Arrow and Parquet projects. In this case, pyarrow outperforms AwkwardForth by factors of 1.5--8$\times$. The AwkwardForth programs for Parquet in Section~\ref{sec:programs} show why: there's nothing about them that specializes to the data type except for the \textcolor{OliveGreen}{\tt\textbf{\#2bit->}} repetition level reader (deeper levels of nesting require logarithmically more bits) and the number of \textcolor{blue}{\tt count} variables and \textcolor{blue}{\tt offset} buffers. Here, AwkwardForth has no advantage over precompiled C++.
 
-We also studied the scaling of AwkwardForth with threads. The AwkwardForth virtual machine is stateful, but lightweight: many can be launched at once. Figure~\ref{fig:scaling} shows deserialization rate of the ROOT files on an AWS {\tt c5.18xlarge} instance, which has 72~cores. Linear scaling falls off at about 20~threads, or 4--5~GiB per second, which may be a limitation of memory bus supplying data from RAM. Python, by comparison, does not scale at all because of Python's Global Interpreter Lock (GIL)~\cite{python-gil}.
+We also studied the scaling of AwkwardForth with threads. The AwkwardForth virtual machine is stateful, but lightweight: many can be launched at once, one for each thread. Figure~\ref{fig:scaling} shows deserialization rate of the ROOT files on an AWS {\tt c5.18xlarge} instance, which has 72~cores. Linear scaling falls off at about 20~threads, or 4--5~GiB per second, which may be a limitation of memory bus supplying data from RAM. Python, by comparison, does not scale at all because of its Global Interpreter Lock (GIL)~\cite{python-gil}.
 
 \begin{figure}[t]
 \includegraphics[width=0.5\linewidth]{AwkwardForth-scaling.pdf}
