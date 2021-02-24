@@ -1,0 +1,84 @@
+\begin{thebibliography}{19}
+
+\bibitem{uproot}
+J.~Pivarski et~al., \emph{{Uproot}},
+  \urlstyle{tt}\url{https://doi.org/10.5281/zenodo.4543730}
+
+\bibitem{root}
+R.~Brun, F.~Rademakers, \emph{{ROOT: An object oriented data analysis
+  framework}}, Nucl. Instrum. Meth. A \textbf{389}, 81 (1997)
+
+\bibitem{numpy}
+C.R. Harris, K.J. Millman, S.J. van~der Walt, R.~Gommers, P.~Virtanen,
+  D.~Cournapeau, E.~Wieser, J.~Taylor, S.~Berg, N.J. Smith et~al., \emph{Array
+  programming with {NumPy}}, Nature \textbf{585}, 357 (2020)
+
+\bibitem{awkward}
+J.~Pivarski et~al., \emph{{Awkward Array}},
+  \urlstyle{tt}\url{https://doi.org/10.5281/zenodo.4539721}
+
+\bibitem{chep2019}
+J.~{Pivarski}, P.~{Elmer}, D.~{Lange}, \emph{{Awkward Arrays in Python, C++,
+  and Numba}}, in \emph{European Physical Journal Web of Conferences} (2020),
+  Vol. 245 of \emph{European Physical Journal Web of Conferences}, p. 05023,
+  \texttt{2001.06307}
+
+\bibitem{cling}
+V.~Vasilev, P.~Canal, A.~Naumann, P.~Russo, \emph{Cling {\textendash} The New
+  Interactive Interpreter for {ROOT} 6}, Journal of Physics: Conference Series
+  \textbf{396}, 052071 (2012)
+
+\bibitem{postscript}
+G.~Reid, \emph{Thinking in PostScript} (Addison-Wesley, 1990), ISBN
+  9780201523720,
+  \urlstyle{tt}\url{https://books.google.com/books?id=ZeRXvgAACAAJ}
+
+\bibitem{forth-standard}
+{Technical Committee X3J14}, \emph{{ANSI Forth Standard}} (1994),
+  \urlstyle{tt}\url{https://www.taygeta.com/forth/dpans.html}
+
+\bibitem{forth}
+E.D. Rather, D.R. Colburn, C.H. Moore, \emph{The Evolution of Forth}, in
+  \emph{The Second ACM SIGPLAN Conference on History of Programming Languages}
+  (Association for Computing Machinery, New York, NY, USA, 1993), HOPL-II, p.
+  177–199, ISBN 0897915704,
+  \urlstyle{tt}\url{https://doi.org/10.1145/154766.155369}
+
+\bibitem{protobuf}
+\emph{{Google ProtoBuf}},
+  \urlstyle{tt}\url{https://developers.google.com/protocol-buffers/}
+
+\bibitem{thrift}
+\emph{{Apache Thrift}}, \urlstyle{tt}\url{https://thrift.apache.org/}
+
+\bibitem{avro}
+\emph{{Apache Avro}}, \urlstyle{tt}\url{http://avro.apache.org/}
+
+\bibitem{flatbuffers}
+\emph{{Google FlatBuffers}},
+  \urlstyle{tt}\url{https://google.github.io/flatbuffers/}
+
+\bibitem{json}
+\emph{{JSON}}, \urlstyle{tt}\url{https://www.json.org/}
+
+\bibitem{rntuple}
+J.~{Blomer}, P.~{Canal}, A.~{Naumann}, D.~{Piparo}, \emph{{Evolution of the
+  ROOT Tree I/O}}, in \emph{European Physical Journal Web of Conferences}
+  (2020), Vol. 245 of \emph{European Physical Journal Web of Conferences}, p.
+  02030, \texttt{2003.07669}
+
+\bibitem{parquet}
+\emph{{Apache Parquet}}, \urlstyle{tt}\url{https://parquet.apache.org/}
+
+\bibitem{arrow}
+\emph{{Apache Arrow}}, \urlstyle{tt}\url{https://arrow.apache.org/}
+
+\bibitem{python-gil}
+D.~Beazley, \emph{{Understanding the Python GIL}}, in \emph{PyCON Python
+  Conference. Atlanta, Georgia} (2010)
+
+\bibitem{this-study}
+\emph{{Performance measurement code for this study}},
+  \urlstyle{tt}\url{https://github.com/scikit-hep/awkward-1.0/tree/1.1.0/studies/awkward-forth-performance}
+
+\end{thebibliography}
