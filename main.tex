@@ -53,13 +53,13 @@ However, unless we limit our attention to special cases like nested vectors of n
 \item All ``knowledge'' of ROOT I/O must be in Uproot, not Awkward Array.
 \end{enumerate}
 
-The first two constraints could be satisfied by just-in-time (JIT) compilation. This is, in fact, what ROOT's Cling compiler does. The third constraint could be satisfied by adding a C++ layer to Uproot. Both of these solutions, however, would significantly complicate the distribution of the Uproot or Awkward Array packages, and portability is a high priority.
+The first two constraints could be satisfied by just-in-time (JIT) compilation. This is, in fact, what ROOT's Cling~\cite{cling} compiler does. The third constraint could be satisfied by adding a C++ layer to Uproot. Both of these solutions, however, would significantly complicate the distribution of the Uproot or Awkward Array packages, and portability is a high priority.
 
 This paper describes a different solution to the constraints listed above, which does not affect the portability of Uproot or Awkward Array. We introduce AwkwardForth, a domain-specific language (DSL) for deserializing arbitrary data into Awkward Arrays that is runtime-interpreted but nearly as fast as compiled code. Unlike DSLs intended for humans to read and write, this DSL is ``internal,'' only used to communicate between software packages. Uproot's task becomes one of expressing ROOT I/O logic in AwkwardForth and Awkward Array executes it, returning filled arrays.
 
 \section{AwkwardForth}
 
-AwkwardForth is a member of the Forth family of languages, which includes Postscript, another internal DSL. AwkwardForth adheres to a subset of the ANSI Forth Standard~\cite{forth-standard} and has extensions for interpreting arbitrary input buffers and filling columns for Awkward Array.
+AwkwardForth is a member of the Forth family of languages, which includes Postscript~\cite{postscript}, another internal DSL. AwkwardForth adheres to a subset of the ANSI Forth Standard~\cite{forth-standard} and has extensions for interpreting arbitrary input buffers and filling columns for Awkward Array.
 
 Like all Forths, AwkwardForth is primarily concerned with stack manipulation. The runtime environment features a stack of integers and programs define ``words'' that manipulate the stack (as well as input and output buffers, in the case of AwkwardForth). Each word consumes and produces an arbitrary number of arguments and return values through this stack, and hence Forth words are more general than functions in a typical programming language. Whereas functional programming languages eliminate or minimize side-effects, Forth acts exclusively through side-effects. As such, it is more like an extensible assembly language.
 
